@@ -16,7 +16,7 @@ import (
 /*   log.Printf("%s took %v", description, delta) */
 /* } */
 
-func fetchRemote(url string, c chan *http.Response) {
+func fetchRemote(url string) (*http.Response, error) {
   client := &http.Client{
   /* CheckRedirect: redirectPolicyFunc, */
   }
@@ -28,38 +28,36 @@ func fetchRemote(url string, c chan *http.Response) {
 
   req.Header.Add("User-Agent", "GoProxy")
 
-  t := time.Now()
-  resp, err := client.Do(req)
-
-  if err == nil {
-    log.Printf("Fetched %s in %v", url, time.Since(t))
-    c <- resp
-  } else {
-    log.Fatal("Request to %s failed", url)
-  }
+  return client.Do(req)
 }
 
-func readResponse(c chan *http.Response) {
-  resp := <- c
-
+func readResponse(resp *http.Response) ([]byte, error) {
   defer resp.Body.Close()
-  body, err := ioutil.ReadAll(resp.Body)
-
-  if err == nil {
-    log.Printf("Got response!\n%s", body[:80])
-    fmt.Printf("%s\n", body)
-  } else {
-    log.Fatal("Failed to read response from %v", resp)
-  }
+  return ioutil.ReadAll(resp.Body)
 }
 
+// TODO DRY
 func handleRequest(w http.ResponseWriter, r *http.Request) {
   url := html.EscapeString(r.FormValue("url"))
   // log.Printf("Proxying %s\n", url)
 
-  c := make (chan *http.Response)
-  go fetchRemote(url, c)
-  go readResponse(c)
+  t := time.Now()
+  resp, err := fetchRemote(url)
+  duration := time.Since(t)
+
+  if err == nil {
+    log.Printf("Fetched %s in %v", url, duration)
+  } else {
+    log.Fatal("Request to %s failed", url)
+  }
+
+  body, err := readResponse(resp)
+
+  if err == nil {
+    fmt.Fprintf(w, "%s\n", body)
+  } else {
+    log.Fatal("Request to %s failed", url)
+  }
 }
 
 func main() {
